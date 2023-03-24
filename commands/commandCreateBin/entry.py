@@ -106,9 +106,9 @@ def defaultUiState():
         baseLength=const.DIMENSION_DEFAULT_WIDTH_UNIT,
         heightUnit=const.DIMENSION_DEFAULT_HEIGHT_UNIT,
         xyTolerance=const.BIN_XY_TOLERANCE,
-        binWidth=2,
-        binLength=3,
-        binHeight=5,
+        binWidth=1,
+        binLength=1,
+        binHeight=2,
         hasBody=True,
         binBodyType=BIN_TYPE_HOLLOW,
         binWallThickness=const.BIN_WALL_THICKNESS,
@@ -126,7 +126,7 @@ def defaultUiState():
         hasBase=True,
         hasBaseScrewHole=False,
         baseScrewHoleSize=const.DIMENSION_SCREW_HOLE_DIAMETER,
-        hasBaseMagnetSockets=False,
+        hasBaseMagnetSockets=True,
         baseMagnetSocketSize=const.DIMENSION_MAGNET_CUTOUT_DIAMETER,
         baseMagnetSocketDepth=const.DIMENSION_MAGNET_CUTOUT_DEPTH,
         preserveChanges=False,
@@ -137,11 +137,6 @@ uiState = defaultUiState()
 staticInputCache = StaticInputCache()
 
 # json.dumps(asdict(uiState))
-
-def showError():
-    stackTrace = traceback.format_exc();
-    if ui:
-        ui.messageBox(f"An unknonwn error occurred, please validate your inpouts and try again:\n{stackTrace}", f"{CMD_NAME} Error")
 
 # Executed when add-in is run.
 def start():
@@ -206,8 +201,10 @@ def render_actual_bin_dimensions_table(inputs: adsk.core.CommandInputs):
 
 def render_actual_compartment_dimension_units_table(inputs: adsk.core.CommandInputs):
     actualDimensionsTable = inputs.addTableCommandInput(BIN_REAL_DIMENSIONS_TABLE, "Actual dimensions (mm)", 2, "1:1")
-    totalWidth = actualDimensionsTable.commandInputs.addTextBoxCommandInput("compartment_width_u", "", "Grid cell width", 1, True)
-    totalLength = actualDimensionsTable.commandInputs.addTextBoxCommandInput("compartment_length_u", "", "Grid cell length", 1, True)
+    totalWidth = actualDimensionsTable.commandInputs.addStringValueInput("compartment_width_u", "", "Grid cell width")
+    totalWidth.isReadOnly = True
+    totalLength = actualDimensionsTable.commandInputs.addStringValueInput("compartment_length_u", "", "Grid cell length")
+    totalLength.isReadOnly = True
     actualDimensionsTable.addCommandInput(totalWidth, 0, 0)
     actualDimensionsTable.addCommandInput(totalLength, 0, 1)
     actualDimensionsTable.tablePresentationStyle = adsk.core.TablePresentationStyles.transparentBackgroundTablePresentationStyle
@@ -215,11 +212,6 @@ def render_actual_compartment_dimension_units_table(inputs: adsk.core.CommandInp
     actualDimensionsTable.minimumVisibleRows = 1
     actualDimensionsTable.maximumVisibleRows = 1
     return actualDimensionsTable
-
-def formatString(text: str, color: str=""):
-    if len(color) > 0:
-        return f"<p style='color:{color}'>{text}</p>"
-    return text
 
 def update_actual_compartment_unit_dimensions(
         actualDimensionsTable: adsk.core.TableCommandInput,
@@ -233,15 +225,12 @@ def update_actual_compartment_unit_dimensions(
         xyTolerance: float,
     ):
     try:
-        minCompartmentDimensionLimit = (const.BIN_CORNER_FILLET_RADIUS - wallThickness) * 2 * 10
-        gridCellWidthInput: adsk.core.TextBoxCommandInput = actualDimensionsTable.getInputAtPosition(0, 0)
-        cellWidth = round((baseWidth * binWidth - wallThickness * 2 - xyTolerance * 2 - wallThickness * (gridWidth - 1)) / gridWidth * 10, 2)
-        gridCellWidthInput.formattedText = formatString("Grid cell width: {}mm".format(cellWidth), "" if cellWidth >= minCompartmentDimensionLimit else "red")
-        gridCellLengthInput: adsk.core.TextBoxCommandInput = actualDimensionsTable.getInputAtPosition(0, 1)
-        cellLength = round((baseLength * binLength - wallThickness * 2 - xyTolerance * 2 - wallThickness * (gridLength - 1)) / gridLength * 10, 2)
-        gridCellLengthInput.formattedText = formatString("Grid cell length: {}mm".format(cellLength), "" if cellLength >= minCompartmentDimensionLimit else "red")
+        gridCellWidthInput: adsk.core.StringValueCommandInput = actualDimensionsTable.getInputAtPosition(0, 0)
+        gridCellWidthInput.value = "Grid cell width: {}mm".format(round((baseWidth * binWidth - wallThickness * 2 - xyTolerance * 2 - wallThickness * (gridWidth - 1)) / gridWidth * 10, 2))
+        gridCellLengthInput: adsk.core.StringValueCommandInput = actualDimensionsTable.getInputAtPosition(0, 1)
+        gridCellLengthInput.value = "Grid cell length: {}mm".format(round((baseLength * binLength - wallThickness * 2 - xyTolerance * 2 - wallThickness * (gridLength - 1)) / gridLength * 10, 2))
     except:
-        showError()
+        ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
 
 def update_actual_bin_dimensions(actualBinDimensionsTable: adsk.core.TableCommandInput, width: adsk.core.ValueInput, length: adsk.core.ValueInput, heigh: adsk.core.ValueInput):
     try:
@@ -252,7 +241,7 @@ def update_actual_bin_dimensions(actualBinDimensionsTable: adsk.core.TableComman
         totalHeight: adsk.core.StringValueCommandInput = actualBinDimensionsTable.getInputAtPosition(0, 2)
         totalHeight.value = "Total height: {}mm".format(round(heigh.realValue * 10, 2))
     except:
-        showError()
+        ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
 
 def render_compartments_table(inputs: adsk.core.CommandInputs, initiallyVisible: bool):
     compartmentsGroup: adsk.core.GroupCommandInput = inputs.itemById(BIN_COMPARTMENTS_GROUP_ID)
@@ -697,7 +686,8 @@ def command_input_changed(args: adsk.core.InputChangedEventArgs):
         if changed_input.parentCommandInput.id == BIN_COMPARTMENTS_TABLE_ID:
             cache_compartments_table_state(inputs)
     except:
-        showError()
+        if ui:
+            ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
 
 
 
@@ -763,7 +753,12 @@ def generateBin(args: adsk.core.CommandEventArgs):
         des = adsk.fusion.Design.cast(app.activeProduct)
         root = adsk.fusion.Component.cast(des.rootComponent)
         tolerance = xy_tolerance.value
-        binName = 'Gridfinity bin {}x{}x{}'.format(int(bin_length.value), int(bin_width.value), int(bin_height.value))
+        binName = 'Gridfinity Pressure Fit Bin {}x{}x{}'.format(int(bin_length.value), int(bin_width.value), int(bin_height.value))
+        
+        if has_scoop.value:
+            binName = binName + " - Scooped"
+        if hasTabInput.value:
+            binName = binName + " - Label Tab"
 
         # create new component
         newCmpOcc = adsk.fusion.Occurrences.cast(root.occurrences).addNewComponent(adsk.core.Matrix3D.create())
@@ -895,6 +890,7 @@ def generateBin(args: adsk.core.CommandEventArgs):
                     True)
                 chamferFeatures.add(chamferInput)
     except:
-        showError()
-        return False
+        if ui:
+            ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
+            return False
     return True

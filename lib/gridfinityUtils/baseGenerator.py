@@ -12,8 +12,10 @@ from ... import config
 app = adsk.core.Application.get()
 ui = app.userInterface
 
+LIFTOFF_DISTANCE = DIMENSION_SCREW_HOLES_DISTANCE - .40
+
 def getScrewHoleOffset(baseWidth: float):
-    return (baseWidth - DIMENSION_SCREW_HOLES_DISTANCE) / 2
+    return (baseWidth - DIMENSION_SCREW_HOLES_DISTANCE) / 2 
 
 def createMagnetCutoutSketch(
     plane: adsk.core.Base,
@@ -51,6 +53,43 @@ def createMagnetCutoutSketch(
         )
 
     return magnetCutoutSketch
+
+def createMagnetLiftoutCutoutSketch(
+    plane: adsk.core.Base,
+    radius: float,
+    baseWidth: float,
+    targetComponent: adsk.fusion.Component,
+    ):
+    sketches: adsk.fusion.Sketches = targetComponent.sketches
+    magnetLiftoutCutoutSketch: adsk.fusion.Sketch = sketches.add(plane)
+    dimensions: adsk.fusion.SketchDimensions = magnetLiftoutCutoutSketch.sketchDimensions
+    screwHoleOffset = (baseWidth - LIFTOFF_DISTANCE) / 2
+    sketchUtils.convertToConstruction(magnetLiftoutCutoutSketch.sketchCurves)
+    circle = magnetLiftoutCutoutSketch.sketchCurves.sketchCircles.addByCenterRadius(
+        adsk.core.Point3D.create(-screwHoleOffset, screwHoleOffset, 0),
+        radius * .5,
+    )
+    dimensions.addDiameterDimension(
+        circle,
+        adsk.core.Point3D.create(0, circle.centerSketchPoint.geometry.y * 2, 0),
+        True,
+    )
+    dimensions.addDistanceDimension(
+        magnetLiftoutCutoutSketch.originPoint,
+        circle.centerSketchPoint,
+        adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation,
+        adsk.core.Point3D.create(circle.centerSketchPoint.geometry.x, 0, 0),
+        True
+        )
+    dimensions.addDistanceDimension(
+        magnetLiftoutCutoutSketch.originPoint,
+        circle.centerSketchPoint,
+        adsk.fusion.DimensionOrientations.VerticalDimensionOrientation,
+        adsk.core.Point3D.create(0, circle.centerSketchPoint.geometry.y, 0),
+        True
+        )
+
+    return magnetLiftoutCutoutSketch
 
 def createGridfinityBase(
     input: BaseGeneratorInput,
@@ -119,6 +158,7 @@ def createGridfinityBase(
     # screw holes
     rectangularPatternFeatures: adsk.fusion.RectangularPatternFeatures = features.rectangularPatternFeatures
     patternInputBodies = adsk.core.ObjectCollection.create()
+    patternLiftoutInputBodies = adsk.core.ObjectCollection.create()
 
     screwHoleOffset = getScrewHoleOffset(input.baseWidth)
     holeFeatures = features.holeFeatures
@@ -152,6 +192,20 @@ def createGridfinityBase(
             targetComponent,
         )
         patternInputBodies.add(magnetCutoutExtrude)
+
+        #Magnet liftout
+        magnetLiftoutCutoutSketch = createMagnetLiftoutCutoutSketch(baseBottomPlane, input.magnetCutoutsDiameter / 2, input.baseWidth, targetComponent)
+
+        magnetLiftoutCutoutExtrude = extrudeUtils.simpleDistanceExtrude(
+            magnetLiftoutCutoutSketch.profiles.item(0),
+            adsk.fusion.FeatureOperations.CutFeatureOperation,
+            input.magnetCutoutsDepth,
+            adsk.fusion.ExtentDirections.NegativeExtentDirection,
+            [baseBottomExtrude.bodies.item(0)],
+            targetComponent,
+        )
+        patternLiftoutInputBodies.add(magnetLiftoutCutoutExtrude)
+
         
         if input.hasScrewHoles and input.magnetCutoutsDepth < const.BIN_BASE_HEIGHT:
             printHelperGrooveSketch: adsk.fusion.Sketch = sketches.add(magnetCutoutExtrude.endFaces.item(0))
@@ -219,6 +273,16 @@ def createGridfinityBase(
         patternInput.quantityTwo = adsk.core.ValueInput.createByReal(2)
         patternInput.distanceTwo = adsk.core.ValueInput.createByReal(DIMENSION_SCREW_HOLES_DISTANCE)
         rectangularPatternFeatures.add(patternInput)
+
+        patternLiftoffInput = rectangularPatternFeatures.createInput(patternLiftoutInputBodies,
+            targetComponent.xConstructionAxis,
+            adsk.core.ValueInput.createByReal(2),
+            adsk.core.ValueInput.createByReal(LIFTOFF_DISTANCE),
+            adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
+        patternLiftoffInput.directionTwoEntity = targetComponent.yConstructionAxis
+        patternLiftoffInput.quantityTwo = adsk.core.ValueInput.createByReal(2)
+        patternLiftoffInput.distanceTwo = adsk.core.ValueInput.createByReal(LIFTOFF_DISTANCE)
+        rectangularPatternFeatures.add(patternLiftoffInput)
 
     return baseBody
 
