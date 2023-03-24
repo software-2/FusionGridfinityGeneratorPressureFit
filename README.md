@@ -1,7 +1,7 @@
 [![CC BY-NC-SA 4.0][cc-by-nc-sa-shield]][cc-by-nc-sa]
 
 ## Description
-Addin for Fusion 360 allowing quick generation of simple [gridfinity](https://www.youtube.com/watch?v=ra_9zU-mnl8) bins and baseplates. The created bodies are parametric and can be easily edited if needed before exporting. Bins have an option to be generated solid providing a kick start for specialized tool bins creation.
+This is a hacked together fork of Le0Michine's Fusion Gridfinity Generator. In this fork, the designs default to pressure fitting magnets, instead of having larger holes usually used for gluing magnets in. Additionally, an extra channel is cut out next to magnet holes to make it easy to wedge a screwdriver in to reclaim your magnets if you ever want to throw away your bin.
 
 ## Features
 
@@ -39,47 +39,47 @@ Light | Skeleton with connection holes | Full
 #### Bin bottom options
 Solid bottom | With screw holes | With magnet cutouts | Combined
 :-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
-![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-solid-bottom.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-screw-holes.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-magnet-cutouts.png)  | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-magnet-cutouts-and-screw-holes-with-groove.png)
+![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-solid-bottom.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-screw-holes.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-magnet-cutouts.png)  | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-magnet-cutouts-and-screw-holes-with-groove.png)
 
 #### Bin type options
 Hollow bin | Shelled bin | Solid bin
 :-------------------------:|:-------------------------:|:-------------------------:
-![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/hollow-bin.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/shelled-bin.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/solid-bin.png)
+![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/hollow-bin.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/shelled-bin.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/solid-bin.png)
 
 #### Bin compartments options
 Uniform compartments | Custom compartments A | Custom compartments B
 :-------------------------:|:-------------------------:|:-------------------------:
-![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-uniform-compartments-options.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-custom-compartments-variant-a-options.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-custom-compartments-variant-b-options.png)
-![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-uniform-compartments.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-custom-compartments-variant-a.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-custom-compartments-variant-b.png)
+![](hhttps://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-uniform-compartments-options.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-custom-compartments-variant-a-options.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-custom-compartments-variant-b-options.png)
+![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-uniform-compartments.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-custom-compartments-variant-a.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-custom-compartments-variant-b.png)
 
 #### Bin label tab configuration
 Full length | Single slot | With offset
 :-------------------------:|:-------------------------:|:-------------------------:
-![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-label-tab-full.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-label-tab-single-slot.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-label-tab-with-offset.png)
+![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-label-tab-full.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-label-tab-single-slot.png) | ![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-label-tab-with-offset.png)
 
 #### Bin scoop feature
 Scoop enabled | Scoop disabled
 :-------------------------:|:-------------------------:
-![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-scoop-on.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-scoop-off.png)
+![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/bin-scoop-on.png) | ![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/bin-scoop-off.png)
 
 
 #### Hollow bin
-![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/gif/bin-with-cutout-creation.gif)
+![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/gif/bin-with-cutout-creation.gif)
 
 #### Specialized Bin
 
 Creating a 4x2 bin to hold oversized volcano nozzle
-![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/gif/specialized-bin-nozzle-creation.gif)
+![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/gif/specialized-bin-nozzle-creation.gif)
 
 Bin for random round things
-![](https://raw.githubusercontent.com/Le0Michine/FusionGridfinityGenerator/master/documentation/assets/gif/specialized-bin-creation.gif)
+![](https://raw.githubusercontent.com/software-2/FusionGridfinityGeneratorPressureFit/master/documentation/assets/gif/specialized-bin-creation.gif)
 
 ## Installation
 
 - Download code into a location on your hard drive.
 
 ```
-git clone https://github.com/Le0Michine/FusionGridfinityGenerator.git
+git clone https://github.com/software-2/FusionGridfinityGeneratorPressureFit.git
 ```
 
 - In Fusion open `Scripts and Addins` window by pressing `shift + s`. It is also can be found in the UI `Design -> Utilities -> ADD-INS`
@@ -93,6 +93,8 @@ git clone https://github.com/Le0Michine/FusionGridfinityGenerator.git
 To update the script download latest sources into the same location and relaunch fusion.
 
 ## Credits
+
+https://github.com/Le0Michine/FusionGridfinityGenerator - The true genius behind this Fusion project.
 
 [Gridfinity](https://www.youtube.com/watch?v=ra_9zU-mnl8) by [Zack Freedman](https://www.youtube.com/c/ZackFreedman/about)
 
