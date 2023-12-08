@@ -5,13 +5,8 @@ import math
 from .const import BIN_CORNER_FILLET_RADIUS
 from ...lib import fusion360utils as futil
 from . import const, combineUtils, faceUtils, commonUtils, sketchUtils, extrudeUtils, baseGenerator, edgeUtils, filletUtils, geometryUtils
-from .binBodyCutoutGenerator import createGridfinityBinBodyCutout
-from .binBodyCutoutGeneratorInput import BinBodyCutoutGeneratorInput
 from .baseGeneratorInput import BaseGeneratorInput
 from .binBodyLipGeneratorInput import BinBodyLipGeneratorInput
-from .binBodyTabGeneratorInput import BinBodyTabGeneratorInput
-from .binBodyTabGenerator import createGridfinityBinBodyTab
-from ... import config
 
 app = adsk.core.Application.get()
 ui = app.userInterface
@@ -27,26 +22,18 @@ def getInnerCutoutScoopFace(
 def createGridfinityBinBodyLip(
     input: BinBodyLipGeneratorInput,
     targetComponent: adsk.fusion.Component,
-    ):
-
-    lipPlaneInput: adsk.fusion.ConstructionPlaneInput = targetComponent.constructionPlanes.createInput()
-    lipPlaneInput.setByOffset(
-        targetComponent.xYConstructionPlane,
-        adsk.core.ValueInput.createByReal(input.origin.z)
-    )
-    lipConstructionPlane = targetComponent.constructionPlanes.add(lipPlaneInput)
-
+):
     actualLipBodyWidth = (input.baseWidth * input.binWidth) - input.xyTolerance * 2.0
     actualLipBodyLength = (input.baseLength * input.binLength) - input.xyTolerance * 2.0
     lipBodyHeight = const.BIN_LIP_EXTRA_HEIGHT
     features: adsk.fusion.Features = targetComponent.features
 
-    lipBodyExtrude = extrudeUtils.createBox(
+    lipBodyExtrude = extrudeUtils.createBoxAtPoint(
         actualLipBodyWidth,
         actualLipBodyLength,
         lipBodyHeight,
         targetComponent,
-        lipConstructionPlane
+        input.origin
     )
     lipBody = lipBodyExtrude.bodies.item(0)
     lipBody.name = 'lip body'
@@ -68,9 +55,11 @@ def createGridfinityBinBodyLip(
         adsk.core.ValueInput.createByReal(0)
     )
     lipCutoutConstructionPlane = targetComponent.constructionPlanes.add(lipCutoutPlaneInput)
+    lipCutoutConstructionPlane.name = "lip cutout construction plane"
 
     if input.hasLipNotches:
         lipCutoutInput = BaseGeneratorInput()
+        lipCutoutInput.originPoint = adsk.core.Point3D.create(input.origin.x, input.origin.y, input.origin.z + const.BIN_BASE_HEIGHT)
         lipCutoutInput.baseWidth = input.baseWidth
         lipCutoutInput.baseLength = input.baseLength
         lipCutoutInput.xyTolerance = input.xyTolerance
@@ -114,6 +103,7 @@ def createGridfinityBinBodyLip(
 
     else:
         lipCutoutInput = BaseGeneratorInput()
+        lipCutoutInput.originPoint = adsk.core.Point3D.create(input.origin.x, input.origin.y, input.origin.z + const.BIN_BASE_HEIGHT)
         lipCutoutInput.baseWidth = input.baseWidth * input.binWidth
         lipCutoutInput.baseLength = input.baseLength * input.binLength
         lipCutoutInput.xyTolerance = input.xyTolerance
@@ -123,10 +113,11 @@ def createGridfinityBinBodyLip(
         lipCutoutBodies.append(lipCutout)
 
     topChamferSketch: adsk.fusion.Sketch = targetComponent.sketches.add(lipCutoutConstructionPlane)
+    topChamferSketch.name = "Lip top chamfer"
     sketchUtils.createRectangle(
         actualLipBodyWidth,
         actualLipBodyLength,
-        adsk.core.Point3D.create(-actualLipBodyWidth / 2, -actualLipBodyLength / 2, 0),
+        topChamferSketch.modelToSketchSpace(adsk.core.Point3D.create(0, 0, topChamferSketch.origin.z)),
         topChamferSketch,
     )
     topChamferNegativeVolume = extrudeUtils.simpleDistanceExtrude(
@@ -137,18 +128,8 @@ def createGridfinityBinBodyLip(
         [],
         targetComponent,
     )
+    topChamferNegativeVolume.name = "Lip top chamfer cut"
     bodiesToSubtract.append(topChamferNegativeVolume.bodies.item(0))
-        
-    # move up
-    moveInput = features.moveFeatures.createInput2(commonUtils.objectCollectionFromList(lipCutoutBodies))
-    moveInput.defineAsTranslateXYZ(
-        adsk.core.ValueInput.createByReal(0),
-        adsk.core.ValueInput.createByReal(0),
-        adsk.core.ValueInput.createByReal(input.origin.z + const.BIN_BASE_HEIGHT),
-        True
-    )
-    lipCutoutHeightAlignment = features.moveFeatures.add(moveInput)
-    lipCutoutHeightAlignment.name = "move to the top"
     bodiesToSubtract = bodiesToSubtract + lipCutoutBodies
 
     combineUtils.cutBody(

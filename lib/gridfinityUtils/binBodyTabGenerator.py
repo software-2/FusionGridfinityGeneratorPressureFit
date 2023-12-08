@@ -36,21 +36,22 @@ def createGridfinityBinBodyTab(
         )
     tabProfilePlane = targetComponent.constructionPlanes.add(tabProfilePlaneInput)
     tabSketch: adsk.fusion.Sketch = targetComponent.sketches.add(tabProfilePlane)
-    tabSketch.name = "tab sketch"
+    tabSketch.name = "label tab sketch"
     tabSketchLine = tabSketch.sketchCurves.sketchLines
-    tabTopEdgeHeight = input.origin.z
-    actualTabHeight = input.width / math.tan(input.overhangAngle)
+    tabTopEdgeHeight = input.origin.z - input.topClearance
+    actualTabWidth = input.width + BIN_TAB_EDGE_FILLET_RADIUS / math.tan((math.radians(90) - input.overhangAngle) / 2)
+    actualTabHeight = actualTabWidth / math.tan(input.overhangAngle)
     line1 = tabSketchLine.addByTwoPoints(
         tabSketch.modelToSketchSpace(adsk.core.Point3D.create(input.origin.x, input.origin.y, tabTopEdgeHeight)),
         tabSketch.modelToSketchSpace(adsk.core.Point3D.create(input.origin.x, input.origin.y, tabTopEdgeHeight - actualTabHeight)),
     )
     line2 = tabSketchLine.addByTwoPoints(
         tabSketch.modelToSketchSpace(adsk.core.Point3D.create(input.origin.x, input.origin.y, tabTopEdgeHeight)),
-        tabSketch.modelToSketchSpace(adsk.core.Point3D.create(input.origin.x, input.origin.y - input.width, tabTopEdgeHeight)),
+        tabSketch.modelToSketchSpace(adsk.core.Point3D.create(input.origin.x, input.origin.y - actualTabWidth, tabTopEdgeHeight)),
     )
     line3 = tabSketchLine.addByTwoPoints(
         tabSketch.modelToSketchSpace(adsk.core.Point3D.create(input.origin.x, input.origin.y, tabTopEdgeHeight - actualTabHeight)),
-        tabSketch.modelToSketchSpace(adsk.core.Point3D.create(input.origin.x, input.origin.y - input.width, tabTopEdgeHeight)),
+        tabSketch.modelToSketchSpace(adsk.core.Point3D.create(input.origin.x, input.origin.y - actualTabWidth, tabTopEdgeHeight)),
     )
 
     constraints: adsk.fusion.GeometricConstraints = tabSketch.geometricConstraints
@@ -107,11 +108,12 @@ def createGridfinityBinBodyTab(
 
     tabTopFace = faceUtils.getTopFace(tabBody)
     roundedEdge = min([edge for edge in tabTopFace.edges if geometryUtils.isCollinearToX(edge)], key=lambda x: x.boundingBox.minPoint.y)
-    filletUtils.createFillet(
+    fillet = filletUtils.createFillet(
         [roundedEdge],
         BIN_TAB_EDGE_FILLET_RADIUS,
         False,
         targetComponent
     )
+    fillet.name = 'label tab fillet'
 
     return tabBody
