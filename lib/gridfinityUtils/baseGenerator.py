@@ -2,34 +2,29 @@ import adsk.core, adsk.fusion, traceback
 import os
 
 
-from .const import BIN_CORNER_FILLET_RADIUS, DEFAULT_FILTER_TOLERANCE, DIMENSION_PRINT_HELPER_GROOVE_DEPTH, DIMENSION_SCREW_HOLES_DISTANCE
+from .const import BIN_CORNER_FILLET_RADIUS, DEFAULT_FILTER_TOLERANCE, DIMENSION_PRINT_HELPER_GROOVE_DEPTH, DIMENSION_SCREW_HOLES_OFFSET, LIFTOUT_TAB_OVERLAP_PERCENTAGE
 from .sketchUtils import createRectangle, filterCirclesByRadius
 from ...lib.gridfinityUtils.baseGeneratorInput import BaseGeneratorInput
-from . import sketchUtils, const, edgeUtils, commonUtils, combineUtils, faceUtils, extrudeUtils
+from . import sketchUtils, const, edgeUtils, commonUtils, combineUtils, faceUtils, extrudeUtils, shapeUtils
 from ...lib import fusion360utils as futil
 from ... import config
 
 app = adsk.core.Application.get()
 ui = app.userInterface
 
-LIFTOFF_DISTANCE = DIMENSION_SCREW_HOLES_DISTANCE - .40
-
-def getScrewHoleOffset(baseWidth: float):
-    return (baseWidth - DIMENSION_SCREW_HOLES_DISTANCE) / 2 
-
-def createMagnetCutoutSketch(
+def createCircleAtPointSketch(
     plane: adsk.core.Base,
     radius: float,
-    baseWidth: float,
+    circleCenterPoint: adsk.core.Point3D,
     targetComponent: adsk.fusion.Component,
-    ):
+):
     sketches: adsk.fusion.Sketches = targetComponent.sketches
-    magnetCutoutSketch: adsk.fusion.Sketch = sketches.add(plane)
-    dimensions: adsk.fusion.SketchDimensions = magnetCutoutSketch.sketchDimensions
-    screwHoleOffset = getScrewHoleOffset(baseWidth)
-    sketchUtils.convertToConstruction(magnetCutoutSketch.sketchCurves)
-    circle = magnetCutoutSketch.sketchCurves.sketchCircles.addByCenterRadius(
-        adsk.core.Point3D.create(-screwHoleOffset, screwHoleOffset, 0),
+    circleSketch: adsk.fusion.Sketch = sketches.add(plane)
+    circleCenterOnSketch = circleSketch.modelToSketchSpace(circleCenterPoint)
+    dimensions: adsk.fusion.SketchDimensions = circleSketch.sketchDimensions
+    sketchUtils.convertToConstruction(circleSketch.sketchCurves)
+    circle = circleSketch.sketchCurves.sketchCircles.addByCenterRadius(
+        adsk.core.Point3D.create(circleCenterOnSketch.x, circleCenterOnSketch.y, 0),
         radius,
     )
     dimensions.addDiameterDimension(
@@ -38,35 +33,34 @@ def createMagnetCutoutSketch(
         True,
     )
     dimensions.addDistanceDimension(
-        magnetCutoutSketch.originPoint,
+        circleSketch.originPoint,
         circle.centerSketchPoint,
         adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation,
         adsk.core.Point3D.create(circle.centerSketchPoint.geometry.x, 0, 0),
         True
         )
     dimensions.addDistanceDimension(
-        magnetCutoutSketch.originPoint,
+        circleSketch.originPoint,
         circle.centerSketchPoint,
         adsk.fusion.DimensionOrientations.VerticalDimensionOrientation,
         adsk.core.Point3D.create(0, circle.centerSketchPoint.geometry.y, 0),
         True
         )
 
-    return magnetCutoutSketch
+    return circleSketch
 
 def createMagnetLiftoutCutoutSketch(
     plane: adsk.core.Base,
     radius: float,
-    baseWidth: float,
-    targetComponent: adsk.fusion.Component,
+    liftoutDistance: float,
+    targetComponent: adsk.fusion.Component
     ):
     sketches: adsk.fusion.Sketches = targetComponent.sketches
     magnetLiftoutCutoutSketch: adsk.fusion.Sketch = sketches.add(plane)
     dimensions: adsk.fusion.SketchDimensions = magnetLiftoutCutoutSketch.sketchDimensions
-    screwHoleOffset = (baseWidth - LIFTOFF_DISTANCE) / 2
     sketchUtils.convertToConstruction(magnetLiftoutCutoutSketch.sketchCurves)
     circle = magnetLiftoutCutoutSketch.sketchCurves.sketchCircles.addByCenterRadius(
-        adsk.core.Point3D.create(-screwHoleOffset, screwHoleOffset, 0),
+        adsk.core.Point3D.create(-liftoutDistance, liftoutDistance, 0),
         radius * .5,
     )
     dimensions.addDiameterDimension(
@@ -99,14 +93,18 @@ def createGridfinityBase(
     actual_base_length = input.baseLength - input.xyTolerance * 2.0
     features: adsk.fusion.Features = targetComponent.features
     extrudeFeatures: adsk.fusion.ExtrudeFeatures = features.extrudeFeatures
+    baseConstructionPlaneInput: adsk.fusion.ConstructionPlaneInput = targetComponent.constructionPlanes.createInput()
+    baseConstructionPlaneInput.setByOffset(targetComponent.xYConstructionPlane, adsk.core.ValueInput.createByReal(input.originPoint.z))
+    baseConstructionPlane = targetComponent.constructionPlanes.add(baseConstructionPlaneInput)
     # create rectangle for the base
     sketches: adsk.fusion.Sketches = targetComponent.sketches
-    base_plate_sketch: adsk.fusion.Sketch = sketches.add(targetComponent.xYConstructionPlane)
-    createRectangle(actual_base_width, actual_base_length, base_plate_sketch.originPoint.geometry, base_plate_sketch)
-        
+    basePlateSketch: adsk.fusion.Sketch = sketches.add(baseConstructionPlane)
+    rectangleOrigin = basePlateSketch.modelToSketchSpace(input.originPoint)
+    createRectangle(actual_base_width, actual_base_length,rectangleOrigin, basePlateSketch)
+
     # extrude top section
     topSectionExtrudeDepth = adsk.core.ValueInput.createByReal(const.BIN_BASE_TOP_SECTION_HEIGH)
-    topSectionExtrudeInput = extrudeFeatures.createInput(base_plate_sketch.profiles.item(0),
+    topSectionExtrudeInput = extrudeFeatures.createInput(basePlateSketch.profiles.item(0),
         adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
     topSectionExtrudeExtent = adsk.fusion.DistanceExtentDefinition.create(topSectionExtrudeDepth)
     topSectionExtrudeInput.setOneSideExtent(topSectionExtrudeExtent,
@@ -157,44 +155,41 @@ def createGridfinityBase(
     
     # screw holes
     rectangularPatternFeatures: adsk.fusion.RectangularPatternFeatures = features.rectangularPatternFeatures
-    patternInputBodies = adsk.core.ObjectCollection.create()
+    cutoutBodies = adsk.core.ObjectCollection.create()
     patternLiftoutInputBodies = adsk.core.ObjectCollection.create()
 
-    screwHoleOffset = getScrewHoleOffset(input.baseWidth)
-    holeFeatures = features.holeFeatures
+    baseBottomPlane = baseBottomExtrude.endFaces.item(0)
+    baseHoleCenterPoint = adsk.core.Point3D.create(
+        const.DIMENSION_SCREW_HOLES_OFFSET - input.xyTolerance,
+        const.DIMENSION_SCREW_HOLES_OFFSET - input.xyTolerance,
+        baseBottomPlane.boundingBox.minPoint.z
+    )
     if input.hasScrewHoles:
-        baseTopPlane = topSectionExtrudeFeature.startFaces.item(0)
-        screwHoleFeatureInput = holeFeatures.createSimpleInput(adsk.core.ValueInput.createByReal(input.screwHolesDiameter))
-        screwHoleFeatureInput.setPositionByPlaneAndOffsets(
-            baseTopPlane,
-            adsk.core.Point3D.create(screwHoleOffset, screwHoleOffset, 0),
-            baseTopPlane.edges.item(1),
-            adsk.core.ValueInput.createByReal(screwHoleOffset),
-            baseTopPlane.edges.item(3),
-            adsk.core.ValueInput.createByReal(screwHoleOffset)
-            )
-        screwHoleFeatureInput.participantBodies = [baseBody]
-        screwHoleFeatureInput.setAllExtent(adsk.fusion.ExtentDirections.PositiveExtentDirection)
-        screwHoleFeature = holeFeatures.add(screwHoleFeatureInput)
-        patternInputBodies.add(screwHoleFeature)
+        screwHoleBody = shapeUtils.simpleCylinder(
+            baseBottomPlane,
+            0,
+            -const.BIN_BASE_HEIGHT,
+            input.screwHolesDiameter / 2,
+            adsk.core.Point3D.create(baseHoleCenterPoint.x, baseHoleCenterPoint.y, 0),
+            targetComponent,
+        )
+        cutoutBodies.add(screwHoleBody)
 
     # magnet cutouts
     if input.hasMagnetCutouts:
-        baseBottomPlane = baseBottomExtrude.endFaces.item(0)
-        magnetCutoutSketch = createMagnetCutoutSketch(baseBottomPlane, input.magnetCutoutsDiameter / 2, input.baseWidth, targetComponent)
-
-        magnetCutoutExtrude = extrudeUtils.simpleDistanceExtrude(
-            magnetCutoutSketch.profiles.item(0),
-            adsk.fusion.FeatureOperations.CutFeatureOperation,
-            input.magnetCutoutsDepth,
-            adsk.fusion.ExtentDirections.NegativeExtentDirection,
-            [baseBottomExtrude.bodies.item(0)],
+        magnetSocketBody = shapeUtils.simpleCylinder(
+            baseBottomPlane,
+            0,
+            -input.magnetCutoutsDepth,
+            input.magnetCutoutsDiameter / 2,
+            adsk.core.Point3D.create(baseHoleCenterPoint.x, baseHoleCenterPoint.y, 0),
             targetComponent,
         )
-        patternInputBodies.add(magnetCutoutExtrude)
+        cutoutBodies.add(magnetSocketBody)
 
         #Magnet liftout
-        magnetLiftoutCutoutSketch = createMagnetLiftoutCutoutSketch(baseBottomPlane, input.magnetCutoutsDiameter / 2, input.baseWidth, targetComponent)
+        liftoutDistance: float = ( (DIMENSION_SCREW_HOLES_OFFSET + input.magnetCutoutsDiameter * LIFTOUT_TAB_OVERLAP_PERCENTAGE))
+        magnetLiftoutCutoutSketch = createMagnetLiftoutCutoutSketch(baseBottomPlane, input.magnetCutoutsDiameter / 2, liftoutDistance, targetComponent)
 
         magnetLiftoutCutoutExtrude = extrudeUtils.simpleDistanceExtrude(
             magnetLiftoutCutoutSketch.profiles.item(0),
@@ -205,84 +200,67 @@ def createGridfinityBase(
             targetComponent,
         )
         patternLiftoutInputBodies.add(magnetLiftoutCutoutExtrude)
-
         
-        if input.hasScrewHoles and input.magnetCutoutsDepth < const.BIN_BASE_HEIGHT:
-            printHelperGrooveSketch: adsk.fusion.Sketch = sketches.add(magnetCutoutExtrude.endFaces.item(0))
-            constraints: adsk.fusion.GeometricConstraints = printHelperGrooveSketch.geometricConstraints
-            for curve in printHelperGrooveSketch.sketchCurves:
-                curve.isConstruction = True
-            sketchLines = printHelperGrooveSketch.sketchCurves.sketchLines
-            sketchArcs = printHelperGrooveSketch.sketchCurves.sketchArcs
-            magnetRadius = input.magnetCutoutsDiameter / 2
-            screwRadius = input.screwHolesDiameter / 2
-            bottomTangentLine = sketchLines.addByTwoPoints(
-                adsk.core.Point3D.create(-screwHoleOffset + magnetRadius, screwHoleOffset - screwRadius, 0),
-                adsk.core.Point3D.create(-screwHoleOffset - magnetRadius, screwHoleOffset - screwRadius, 0),
+        if input.hasScrewHoles and (const.BIN_BASE_HEIGHT - input.magnetCutoutsDepth) > const.BIN_MAGNET_HOLE_GROOVE_DEPTH:
+            grooveBody = shapeUtils.simpleCylinder(
+                baseBottomPlane,
+                -input.magnetCutoutsDepth,
+                -const.BIN_MAGNET_HOLE_GROOVE_DEPTH,
+                input.magnetCutoutsDiameter / 2,
+                adsk.core.Point3D.create(baseHoleCenterPoint.x, baseHoleCenterPoint.y, 0),
+                targetComponent,
             )
-            topTangentLine = sketchLines.addByTwoPoints(
-                adsk.core.Point3D.create(-screwHoleOffset + magnetRadius, screwHoleOffset + screwRadius, 0),
-                adsk.core.Point3D.create(-screwHoleOffset - magnetRadius, screwHoleOffset + screwRadius, 0),
+            grooveLayer1 = shapeUtils.simpleBox(
+                baseBottomPlane,
+                -input.magnetCutoutsDepth,
+                input.magnetCutoutsDiameter,
+                input.screwHolesDiameter,
+                -const.BIN_MAGNET_HOLE_GROOVE_DEPTH / 2,
+                adsk.core.Point3D.create(baseHoleCenterPoint.x + input.magnetCutoutsDiameter / 2, baseHoleCenterPoint.y - input.screwHolesDiameter / 2, 0),
+                targetComponent,
             )
-            screwHoleCircle: adsk.fusion.SketchCircle = filterCirclesByRadius(screwRadius, DEFAULT_FILTER_TOLERANCE, printHelperGrooveSketch.sketchCurves.sketchCircles)[0]
-            magnetCutoutCircle: adsk.fusion.SketchCircle = filterCirclesByRadius(magnetRadius, DEFAULT_FILTER_TOLERANCE, printHelperGrooveSketch.sketchCurves.sketchCircles)[0]
-            startArc = sketchArcs.addByCenterStartSweep(
-                magnetCutoutCircle.centerSketchPoint,
-                bottomTangentLine.startSketchPoint,
-                1
-                )
-            endArc = sketchArcs.addByCenterStartSweep(
-                magnetCutoutCircle.centerSketchPoint,
-                topTangentLine.endSketchPoint,
-                1
-                )
-            constraints.addCoincident(startArc.endSketchPoint, topTangentLine.startSketchPoint)
-            constraints.addCoincident(endArc.endSketchPoint, bottomTangentLine.endSketchPoint)
-            constraints.addConcentric(screwHoleCircle, startArc)
-            constraints.addConcentric(screwHoleCircle, endArc)
-            constraints.addTangent(screwHoleCircle, bottomTangentLine)
-            constraints.addTangent(screwHoleCircle, topTangentLine)
-            constraints.addCoincident(topTangentLine.startSketchPoint, magnetCutoutCircle)
-            constraints.addCoincident(topTangentLine.endSketchPoint, magnetCutoutCircle)
-            constraints.addHorizontal(bottomTangentLine)
-            constraints.addHorizontal(topTangentLine)
+            grooveLayer2 = shapeUtils.simpleBox(
+                baseBottomPlane,
+                -(input.magnetCutoutsDepth + const.BIN_MAGNET_HOLE_GROOVE_DEPTH / 2),
+                input.screwHolesDiameter,
+                input.screwHolesDiameter,
+                -const.BIN_MAGNET_HOLE_GROOVE_DEPTH / 2,
+                adsk.core.Point3D.create(baseHoleCenterPoint.x + input.screwHolesDiameter / 2, baseHoleCenterPoint.y - input.screwHolesDiameter / 2, 0),
+                targetComponent,
+            )
+            combineUtils.intersectBody(grooveBody, commonUtils.objectCollectionFromList([grooveLayer1, grooveLayer2]), targetComponent)
 
-            printHelperGrooveCutInput = extrudeFeatures.createInput(
-                printHelperGrooveSketch.profiles.item(0),
-                adsk.fusion.FeatureOperations.CutFeatureOperation,
-                )
-            printHelperGrooveCutExtent = adsk.fusion.DistanceExtentDefinition.create(adsk.core.ValueInput.createByReal(DIMENSION_PRINT_HELPER_GROOVE_DEPTH))
-            printHelperGrooveCutInput.setOneSideExtent(
-                printHelperGrooveCutExtent,
-                adsk.fusion.ExtentDirections.NegativeExtentDirection,
-                adsk.core.ValueInput.createByReal(0),
-            )
-            printHelperGrooveCutInput.participantBodies = [baseBottomExtrude.bodies.item(0)]
-            printHelperGrooveCut = extrudeFeatures.add(printHelperGrooveCutInput)
-
-            patternInputBodies.add(printHelperGrooveCut)
+            cutoutBodies.add(grooveBody)
 
 
     if input.hasScrewHoles or input.hasMagnetCutouts:
-        patternInput = rectangularPatternFeatures.createInput(patternInputBodies,
+        if cutoutBodies.count > 1:
+            joinFeature = combineUtils.joinBodies(cutoutBodies.item(0), commonUtils.objectCollectionFromList(list(cutoutBodies)[1:]), targetComponent)
+            cutoutBodies = commonUtils.objectCollectionFromList(joinFeature.bodies)
+        patternSpacingX = input.baseWidth - const.DIMENSION_SCREW_HOLES_OFFSET * 2
+        patternSpacingY = input.baseLength - const.DIMENSION_SCREW_HOLES_OFFSET * 2
+        patternInput = rectangularPatternFeatures.createInput(cutoutBodies,
             targetComponent.xConstructionAxis,
             adsk.core.ValueInput.createByReal(2),
-            adsk.core.ValueInput.createByReal(DIMENSION_SCREW_HOLES_DISTANCE),
+            adsk.core.ValueInput.createByReal(patternSpacingX),
             adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
         patternInput.directionTwoEntity = targetComponent.yConstructionAxis
         patternInput.quantityTwo = adsk.core.ValueInput.createByReal(2)
-        patternInput.distanceTwo = adsk.core.ValueInput.createByReal(DIMENSION_SCREW_HOLES_DISTANCE)
-        rectangularPatternFeatures.add(patternInput)
+        patternInput.distanceTwo = adsk.core.ValueInput.createByReal(patternSpacingY)
+        patternFeature = rectangularPatternFeatures.add(patternInput)
+        combineUtils.cutBody(baseBody, commonUtils.objectCollectionFromList(list(cutoutBodies) + list(patternFeature.bodies)), targetComponent)
 
-        patternLiftoffInput = rectangularPatternFeatures.createInput(patternLiftoutInputBodies,
-            targetComponent.xConstructionAxis,
-            adsk.core.ValueInput.createByReal(2),
-            adsk.core.ValueInput.createByReal(LIFTOFF_DISTANCE),
-            adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
-        patternLiftoffInput.directionTwoEntity = targetComponent.yConstructionAxis
-        patternLiftoffInput.quantityTwo = adsk.core.ValueInput.createByReal(2)
-        patternLiftoffInput.distanceTwo = adsk.core.ValueInput.createByReal(LIFTOFF_DISTANCE)
-        rectangularPatternFeatures.add(patternLiftoffInput)
+        if input.hasMagnetCutouts:
+            liftoutOffset: float = actual_base_width - liftoutDistance * 2
+            patternLiftoffInput = rectangularPatternFeatures.createInput(patternLiftoutInputBodies,
+                targetComponent.xConstructionAxis,
+                adsk.core.ValueInput.createByReal(2),
+                adsk.core.ValueInput.createByReal(liftoutOffset),
+                adsk.fusion.PatternDistanceType.SpacingPatternDistanceType)
+            patternLiftoffInput.directionTwoEntity = targetComponent.yConstructionAxis
+            patternLiftoffInput.quantityTwo = adsk.core.ValueInput.createByReal(2)
+            patternLiftoffInput.distanceTwo = adsk.core.ValueInput.createByReal(liftoutOffset)
+            rectangularPatternFeatures.add(patternLiftoffInput)
 
     return baseBody
 
@@ -300,20 +278,24 @@ def createBaseWithClearance(input: BaseGeneratorInput, targetComponent: adsk.fus
     )
     offsetFacesFeature = features.offsetFeatures.add(offsetFacesInput)
     offsetFacesFeature.name = "bin base side faces"
-    offsetFacesFeature.bodies.item(0).name = "bin base side faces"
 
-    extentEdge = faceUtils.getTopHorizontalEdge(offsetFacesFeature.bodies.item(0).edges)
+    # original solid body might be included into feature bodies array, find created surfaces using isSolid flag
+    offsetSurfaceBodies = [body for body in list(offsetFacesFeature.bodies) if not body.isSolid][0]
+    offsetSurfaceBodies.name = "bin base side faces"
+
+    extentEdge = faceUtils.getTopHorizontalEdge(offsetSurfaceBodies.edges)
     extendClearanceSurfaceFeatureInput = features.extendFeatures.createInput(
         commonUtils.objectCollectionFromList([extentEdge]),
         adsk.core.ValueInput.createByReal(input.xyTolerance * 2),
         adsk.fusion.SurfaceExtendTypes.NaturalSurfaceExtendType,
         True
     )
-    features.extendFeatures.add(extendClearanceSurfaceFeatureInput)
+    extendFeature = features.extendFeatures.add(extendClearanceSurfaceFeatureInput)
 
     # thicken faces to add clearance
+    thickenFaces = commonUtils.objectCollectionFromList(offsetFacesFeature.faces, extendFeature.faces);
     thickenFeatureInput = features.thickenFeatures.createInput(
-        commonUtils.objectCollectionFromList(offsetFacesFeature.faces),
+        thickenFaces,
         adsk.core.ValueInput.createByReal(input.xyTolerance),
         False,
         adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
@@ -322,28 +304,18 @@ def createBaseWithClearance(input: BaseGeneratorInput, targetComponent: adsk.fus
     thickenFeaure = features.thickenFeatures.add(thickenFeatureInput)
     thickenFeaure.name = "clearance"
     thickenFeaure.bodies.item(0).name = "bin base clearance layer"
-    features.removeFeatures.add(offsetFacesFeature.bodies.item(0))
+    features.removeFeatures.add(offsetSurfaceBodies)
 
     # thickened body would go beyond the bottom face, use bounding box to make bottom flat
-    clearanceBoundingBox = extrudeUtils.createBox(
+    clearanceBoundingBox = extrudeUtils.createBoxAtPoint(
         input.baseWidth,
         input.baseLength,
         -const.BIN_BASE_HEIGHT,
         targetComponent,
-        targetComponent.xYConstructionPlane,
+        adsk.core.Point3D.create(input.originPoint.x - input.xyTolerance, input.originPoint.y - input.xyTolerance, input.originPoint.z),
         )
     clearanceBoundingBox.name = "clearance bounding box"
     clearanceBoundingBox.bodies.item(0).name = "clearance bounding box"
-    # move body to allow for clearance
-    moveInput = features.moveFeatures.createInput2(commonUtils.objectCollectionFromList([clearanceBoundingBox.bodies.item(0)]))
-    moveInput.defineAsTranslateXYZ(
-        adsk.core.ValueInput.createByReal(-input.xyTolerance),
-        adsk.core.ValueInput.createByReal(-input.xyTolerance),
-        adsk.core.ValueInput.createByReal(0),
-        True
-    )
-    clearanceAlignment = features.moveFeatures.add(moveInput)
-    clearanceAlignment.name = "align for xy clearance"
     combineFeatureInput = features.combineFeatures.createInput(
         thickenFeaure.bodies.item(0),
         commonUtils.objectCollectionFromList(clearanceBoundingBox.bodies)

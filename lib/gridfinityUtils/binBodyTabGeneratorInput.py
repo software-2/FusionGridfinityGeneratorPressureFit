@@ -5,7 +5,16 @@ from . import const
 class BinBodyTabGeneratorInput():
     def __init__(self):
         self.overhangAngle = const.BIN_TAB_OVERHANG_ANGLE
+        self.labelAngle = const.BIN_TAB_LABEL_ANGLE
         self.position = 0
+
+    @property
+    def topClearance(self) -> float:
+        return self._topClearance
+
+    @topClearance.setter
+    def topClearance(self, value: float):
+        self._topClearance = value
 
     @property
     def width(self) -> float:
@@ -25,11 +34,11 @@ class BinBodyTabGeneratorInput():
 
     @property
     def origin(self) -> adsk.core.Point3D:
-        return self._originUnit
+        return self._origin
 
     @origin.setter
     def origin(self, value: adsk.core.Point3D):
-        self._originUnit = value
+        self._origin = value
 
     @property
     def overhangAngle(self) -> float:
@@ -38,5 +47,13 @@ class BinBodyTabGeneratorInput():
     @overhangAngle.setter
     def overhangAngle(self, value: float):
         self._tabOverhangAngle = value
+
+    @property
+    def labelAngle(self) -> float:
+        return self._tablabelAngle
+
+    @labelAngle.setter
+    def labelAngle(self, value: float):
+        self._tablabelAngle = value
 
     
